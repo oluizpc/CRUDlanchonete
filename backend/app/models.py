@@ -8,15 +8,13 @@ from .database import Base
 class Produto(Base):
     __tablename__ = 'produtos'
     idproduto = Column(Integer, primary_key=True, autoincrement=True)
-    nome = Column(String(100), nullable=False, unique=True)
-    descricao = Column(String, nullable=True)
+    descricao = Column(String, nullable=False, unique=True)
     preco = Column(Numeric(10,2), nullable=False)
     categoria = Column(String(50), nullable=True)
     status = Column(Boolean, default=True)
     data_criacao = Column(DateTime, server_default=func.now())
     data_alteracao = Column(DateTime, onupdate=func.now())
-    
-    pedidos_produtos = relationship("PedidoProduto", back_populates="produto")
+    pedido_produtos = relationship("PedidoProduto", back_populates="produto")
 
 class SituacaoMesa(Base):
     __tablename__ = 'situacao_mesa'
@@ -30,10 +28,12 @@ class Mesa(Base):
     idmesa = Column(Integer, primary_key=True, autoincrement=True)
     numero = Column(Integer, nullable=False, unique=True)
     id_situacao_fk = Column(Integer, ForeignKey('situacao_mesa.id_situacao'), nullable=False)
+    id_cliente_fk = Column(Integer, ForeignKey('clientes.idcliente'), nullable=True) # Adicionado
     data_criacao = Column(DateTime, server_default=func.now())
     data_alteracao = Column(DateTime, onupdate=func.now())
     
     situacao = relationship("SituacaoMesa", back_populates="mesas")
+    cliente = relationship("Cliente", back_populates="mesas")
     pedidos = relationship("Pedido", back_populates="mesa")
 
 class Cliente(Base):
@@ -41,12 +41,13 @@ class Cliente(Base):
     idcliente = Column(Integer, primary_key=True, autoincrement=True)
     nome = Column(String(100), nullable=False)
     apelido = Column(String(50), nullable=True)
-    email = Column(String(100), nullable=True, unique=True)
+    email = Column(String(100), nullable=True, unique=True) # ✅ LINHA A SER ALTERADA
     telefone = Column(String(20), nullable=True)
     data_criacao = Column(DateTime, server_default=func.now())
     data_alteracao = Column(DateTime, onupdate=func.now())
     is_active = Column(Boolean, default=True)
     pedidos = relationship("Pedido", back_populates="cliente")
+    mesas = relationship("Mesa", back_populates="cliente")
 
 class Pedido(Base):
     __tablename__ = 'pedidos'
@@ -72,7 +73,7 @@ class PedidoProduto(Base):
     data_alteracao = Column(DateTime, onupdate=func.now())
     
     pedido = relationship("Pedido", back_populates="itens")
-    produto = relationship("Produto", back_populates="pedidos_produtos")
+    produto = relationship("Produto")
 
 class Pagamento(Base):
     __tablename__ = 'pagamentos'

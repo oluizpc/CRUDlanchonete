@@ -1,6 +1,5 @@
-# app/main.py
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware # Importe o CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from .database import engine, Base
 from app.routers import (
     users, 
@@ -9,7 +8,9 @@ from app.routers import (
     mesas_router, 
     clientes_router, 
     pedidos_router, 
-    pagamentos_router
+    pagamentos_router,
+    situacao_mesas_router, # Adicionado
+    pedido_produtos_router # Adicionado
 )
 
 app = FastAPI(title="Restaurante API", description="API para gerenciamento de restaurante", version="1.0.0")
@@ -45,3 +46,5 @@ app.include_router(pedidos_router)
 app.include_router(pagamentos_router)
 app.include_router(users.router) 
 app.include_router(auth.router)
+app.include_router(situacao_mesas_router)
+app.include_router(pedido_produtos_router)

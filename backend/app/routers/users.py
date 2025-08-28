@@ -1,13 +1,25 @@
-# app/routes/users.py
+# app/routers/users.py
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
+from typing import Optional
+from passlib.context import CryptContext
+from jose import JWTError, jwt
+
 from .. import schemas, models, database
 from ..utils.auth import get_password_hash
-from ..utils.auth_token import verify_token
 
-# Adiciona a dependência de segurança OAuth2
+# Configurações do token JWT
+SECRET_KEY = "sua-chave-secreta-altamente-segura"  # <--- ALTERE ESTA CHAVE!
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+# Contexto para hash de senhas
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Esquema de autenticação OAuth2
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/token/login")
 
 # Cria um APIRouter para as rotas de usuários
@@ -24,18 +36,31 @@ def get_db():
     finally:
         db.close()
 
-# Dependência para verificar o token e obter o usuário logado
-def get_current_active_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+# Funções de token JWT (Agora aqui no users.py)
+def get_user_from_token(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Credenciais de autenticação inválidas",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    username = verify_token(token, credentials_exception)
-    user = db.query(models.User).filter(models.User.username == username, models.User.is_active == True).first()
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            raise credentials_exception
+        token_data = schemas.TokenData(username=username)
+    except JWTError:
+        raise credentials_exception
+    
+    user = db.query(models.User).filter(models.User.username == token_data.username).first()
     if user is None:
         raise credentials_exception
     return user
+
+def get_current_active_user(current_user: models.User = Depends(get_user_from_token)):
+    if not current_user.is_active:
+        raise HTTPException(status_code=400, detail="Usuário inativo")
+    return current_user
 
 # Rota para criar um novo usuário (POST) - NÃO precisa de proteção
 @router.post("/", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
@@ -112,5 +137,4 @@ def delete_user(user_id: int, current_user: models.User = Depends(get_current_ac
     
     db_user.is_active = False  # Desativa o usuário em vez de deletar
     db.commit()
-    # Retorna uma resposta vazia para o status 204
     return {}

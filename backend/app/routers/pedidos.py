@@ -8,37 +8,72 @@ from ..database import get_db
 
 pedidos_router = APIRouter(prefix="/pedidos", tags=["Pedidos"])
 
-@pedidos_router.get("/", response_model=list[schemas.Pedido])
-def listar_pedidos(db: Session = Depends(get_db)):
-    return db.query(models.Pedido).options(joinedload(models.Pedido.itens)).all()
-
-@pedidos_router.get("/{id}", response_model=schemas.Pedido)
-def obter_pedido(id: int, db: Session = Depends(get_db)):
-    pedido = db.query(models.Pedido).options(joinedload(models.Pedido.itens)).filter(models.Pedido.idpedido == id).first()
+@pedidos_router.get("/mesa/{mesa_id}", response_model=schemas.Pedido)
+def buscar_pedido_por_mesa(mesa_id: int, db: Session = Depends(get_db)):
+    pedido = db.query(models.Pedido).filter(
+        models.Pedido.mesa_id == mesa_id,
+        models.Pedido.status == 'aberto'
+    ).options(
+        joinedload(models.Pedido.itens).joinedload(models.PedidoProduto.produto)
+    ).first()
+    
     if not pedido:
-        raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+        raise HTTPException(status_code=404, detail="Nenhum pedido aberto encontrado para esta mesa.")
+    
     return pedido
 
+# Rota adicionada para buscar um pedido por seu ID (requisitada pelo frontend)
+@pedidos_router.get("/{pedido_id}", response_model=schemas.Pedido)
+def buscar_pedido_por_id(pedido_id: int, db: Session = Depends(get_db)):
+    pedido = db.query(models.Pedido).filter(
+        models.Pedido.idpedido == pedido_id
+    ).options(
+        joinedload(models.Pedido.itens).joinedload(models.PedidoProduto.produto)
+    ).first()
+    
+    if not pedido:
+        raise HTTPException(status_code=404, detail="Pedido não encontrado.")
+    
+    return pedido
+
+
+@pedidos_router.post("/mesa/{mesa_id}", response_model=schemas.Pedido, status_code=status.HTTP_201_CREATED)
+def criar_pedido_para_mesa(mesa_id: int, cliente_id: int, db: Session = Depends(get_db)):
+    # Verifica se já existe um pedido aberto para esta mesa
+    existing_pedido = db.query(models.Pedido).filter(
+        models.Pedido.mesa_id == mesa_id,
+        models.Pedido.status == 'aberto'
+    ).first()
+    
+    if existing_pedido:
+        raise HTTPException(status_code=400, detail="Já existe um pedido aberto para esta mesa.")
+        
+    novo_pedido = models.Pedido(mesa_id=mesa_id, cliente_id=cliente_id, status='aberto')
+    db.add(novo_pedido)
+    db.commit()
+    db.refresh(novo_pedido)
+    return novo_pedido
+
 @pedidos_router.post("/", response_model=schemas.Pedido, status_code=status.HTTP_201_CREATED)
-def criar_pedido(pedido: schemas.PedidoCreate, db: Session = Depends(get_db)):
-    pedido_data = pedido.model_dump(exclude={"itens"})
-    itens_data = pedido.itens
+def criar_pedido_com_itens(pedido: schemas.PedidoCreate, db: Session = Depends(get_db)):
+    novo_pedido = models.Pedido(cliente_id=pedido.cliente_id, mesa_id=pedido.mesa_id, status=pedido.status)
+    db.add(novo_pedido)
+    db.commit()
+    db.refresh(novo_pedido)
 
-    novo_pedido = models.Pedido(**pedido_data)
-
-    for item in itens_data:
-        produto = db.query(models.Produto).filter(models.Produto.idproduto == item.produto_id).first()
+    for item_data in pedido.itens:
+        produto = db.query(models.Produto).filter(models.Produto.idproduto == item_data.produto_id).first()
         if not produto:
-            raise HTTPException(status_code=404, detail=f"Produto com ID {item.produto_id} não encontrado.")
+            raise HTTPException(status_code=404, detail=f"Produto com ID {item_data.produto_id} não encontrado.")
 
-        novo_item_pedido = models.PedidoProduto(
-            produto_id=item.produto_id,
-            quantidade=item.quantidade,
+        novo_item = models.PedidoProduto(
+            pedido_id=novo_pedido.idpedido,
+            produto_id=item_data.produto_id,
+            quantidade=item_data.quantidade,
             preco_unitario=produto.preco
         )
-        novo_pedido.itens.append(novo_item_pedido)
-
-    db.add(novo_pedido)
+        db.add(novo_item)
+    
     try:
         db.commit()
         db.refresh(novo_pedido)
@@ -114,3 +149,5 @@ def deletar_item_do_pedido(id_pedido: int, id_item: int, db: Session = Depends(g
 
     db.delete(item)
     db.commit()
+    
+    

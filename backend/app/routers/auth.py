@@ -10,8 +10,7 @@ router = APIRouter(
     tags=["Auth"]
 )
 
-# Dependência para obter a sessão do banco de dados
-
+# A dependência para o banco de dados pode ser reutilizada
 def get_db():
     db = database.SessionLocal()
     try: 
@@ -31,4 +30,3 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
         )
     access_token = create_access_token(data={"sub": user.username})
     return {"access_token": access_token, "token_type": "bearer"}
-
